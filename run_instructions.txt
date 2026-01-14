@@ -1,0 +1,241 @@
+MATERNAL HEALTH RISK PREDICTION - REPRODUCIBILITY INSTRUCTIONS
+================================================================
+
+IMPORTANT: This document provides detailed instructions for reproducing
+the results reported in the dissertation. Follow these steps exactly.
+
+SYSTEM REQUIREMENTS
+-------------------
+- Python 3.10 or higher
+- 2GB free disk space
+- Operating System: Windows, macOS, or Linux
+
+DEPENDENCIES AND VERSIONS
+--------------------------
+All required packages are specified in requirements.txt with version constraints.
+Key dependencies:
+- numpy>=1.24.0,<2.0.0 (important: must be < 2.0 for TensorFlow compatibility)
+- scikit-learn>=1.3.0,<1.6.0
+- tensorflow>=2.16.0,<2.17.0
+- xgboost>=2.0.0,<3.0.0
+- lightgbm>=4.0.0,<5.0.0
+- imbalanced-learn>=0.11.0,<0.13.0
+
+RANDOM SEEDS FOR REPRODUCIBILITY
+---------------------------------
+All random operations are controlled with a fixed seed:
+- Global seed: 42
+- Set in: src/data_processing.py, src/models/train.py, src/models/train_cv.py
+- Seeds set for: numpy, random, tensorflow, sklearn, xgboost, lightgbm
+
+STEP-BY-STEP REPRODUCTION INSTRUCTIONS
+---------------------------------------
+
+STEP 1: Environment Setup
+--------------------------
+1. Create a new Python virtual environment:
+   
+   Windows:
+   python -m venv venv
+   venv\Scripts\activate
+   
+   Linux/macOS:
+   python -m venv venv
+   source venv/bin/activate
+
+2. Install dependencies:
+   pip install -r requirements.txt
+   
+   If version conflicts occur:
+   python fix_dependencies.py
+
+3. Verify installation:
+   python check_env.py
+
+STEP 2: Dataset Preparation
+----------------------------
+1. Download the Maternal Health Risk dataset:
+   
+   Option A (Automatic):
+   python download_dataset.py
+   
+   Option B (Manual):
+   - Download from: https://www.kaggle.com/datasets/andrewmvd/maternal-health-risk-data
+   - Or from: https://archive.ics.uci.edu/ml/datasets/Maternal+Health+Risk+Data+Set
+   - Save as: data/raw/maternal_health.csv
+
+2. Verify dataset:
+   - Should have 1014 rows and 7 columns
+   - Columns: Age, SystolicBP, DiastolicBP, BS, BodyTemp, HeartRate, RiskLevel
+   - No modifications should be made to the raw dataset
+
+STEP 3: Data Processing
+------------------------
+Run data preprocessing pipeline:
+
+python src/data_processing.py
+
+This will:
+- Load raw dataset from data/raw/maternal_health.csv
+- Remove duplicates
+- Handle missing values (if any) with median imputation
+- Engineer features: PulsePressure, BodyTemp_C
+- Encode target variable: Low=0, Mid=1, High=2
+- Split data: 70% train, 15% validation, 15% test (stratified)
+- Scale features using StandardScaler (fit only on training data)
+- Save processed data to data/processed/
+
+Output files:
+- data/processed/X_train.npy
+- data/processed/X_val.npy
+- data/processed/X_test.npy
+- data/processed/y_train.npy
+- data/processed/y_val.npy
+- data/processed/y_test.npy
+- data/processed/scaler.pkl
+- data/processed/feature_names.pkl
+
+STEP 4: Cross-Validation Training (FOR DISSERTATION)
+-----------------------------------------------------
+Run the robust cross-validation training pipeline:
+
+python src/models/train_cv.py
+
+This addresses key methodological concerns:
+- Implements stratified 5-fold cross-validation
+- Prevents data leakage by applying SMOTE only within training folds
+- Compares strategies: No resampling vs SMOTE
+- Evaluates top 3 models: LightGBM, XGBoost, Gradient Boosting
+- Reports mean ± standard deviation for all metrics
+- Selects best model based on High-Risk recall (clinical priority)
+- Trains final model on full training+validation set
+- Evaluates on held-out test set
+
+Expected runtime: 5-15 minutes (depending on hardware)
+
+Output files:
+- reports/cv_results_summary.csv - Mean ± std for each model (USE IN DISSERTATION)
+- reports/cv_results_folds.csv - Raw fold-by-fold results
+- reports/resampling_strategy_comparison.csv - SMOTE comparison
+- models/best_model.pkl - Final trained model
+- models/model_metadata.json - Model configuration and test performance
+
+STEP 5: Baseline Training (Optional, for comparison)
+-----------------------------------------------------
+To run the original simple train-test-validation split:
+
+python src/models/train.py
+
+Note: This produces optimistic results due to single lucky split.
+Use STEP 4 results for dissertation.
+
+STEP 6: Generate Explainability Reports (Optional)
+---------------------------------------------------
+python src/explainers.py
+
+Generates SHAP and LIME visualizations.
+Note: Resource intensive, may take 10-30 minutes.
+
+STEP 7: Launch Application
+---------------------------
+Option A - Web Dashboard:
+streamlit run dashboard/streamlit_app.py
+Access at: http://localhost:8501
+
+Option B - REST API:
+python src/api/app.py
+Access at: http://localhost:8000/docs
+
+EXPECTED RESULTS (from Cross-Validation)
+-----------------------------------------
+Based on stratified 5-fold CV:
+
+Best Model: LightGBM (or XGBoost)
+Strategy: SMOTE or No Resampling (depends on High-Risk recall)
+
+Expected performance ranges (mean ± std):
+- Accuracy: 0.85-0.95 ± 0.02-0.05
+- F1 Score (weighted): 0.85-0.95 ± 0.02-0.05
+- F1 Score (macro): 0.80-0.90 ± 0.03-0.06
+- High-Risk Recall: 0.70-0.90 ± 0.05-0.15
+
+Note: Exact values may vary slightly due to:
+- Random initialization in some algorithms
+- System-specific floating point precision
+- Library version differences (within specified constraints)
+
+However, overall conclusions should remain stable.
+
+DATA PROVENANCE
+----------------
+Dataset: Maternal Health Risk Data Set
+Source: UCI Machine Learning Repository / Kaggle
+Original study: Ahmed et al.
+License: Creative Commons (check repository for exact terms)
+Collection: Data collected from IoT-based risk monitoring system
+Geography: Bangladesh (rural and urban areas)
+Sample size: ~1000 pregnant women
+Features: 6 clinical measurements
+Target: 3-class risk level (Low, Mid, High)
+
+Limitations:
+- Small dataset size limits generalization
+- Single geographic region
+- No longitudinal tracking
+- Limited feature set (only 6 measurements)
+- Potential selection bias in data collection
+
+VALIDATION METHODOLOGY
+----------------------
+1. Stratified 5-fold cross-validation to ensure:
+   - Each fold maintains class distribution
+   - All samples are validated exactly once
+   - Robust performance estimates (mean ± std)
+
+2. SMOTE applied ONLY within training folds to prevent data leakage:
+   - Validation data never exposed to SMOTE
+   - Test data completely held out
+
+3. Separate held-out test set (15% of data):
+   - Never used for model selection or hyperparameter tuning
+   - Only used for final performance evaluation
+   - Provides unbiased estimate of generalization
+
+4. Model selection based on High-Risk recall:
+   - Clinical priority: minimize false negatives for high-risk cases
+   - Balanced with overall performance metrics
+
+TROUBLESHOOTING
+----------------
+Issue: NumPy version conflict
+Solution: python fix_dependencies.py
+
+Issue: Model files not found
+Solution: Ensure STEP 4 (train_cv.py) completed successfully
+
+Issue: SHAP/LIME errors
+Solution: pip install shap lime --upgrade
+
+Issue: Different results
+Check:
+- Python version matches (3.10+)
+- All package versions match requirements.txt
+- Random seed is 42 in all files
+- Dataset is original unmodified version
+- No GPU variations (use CPU for exact reproduction)
+
+CITATION
+--------
+If you use this code or methodology, please cite the associated dissertation
+and the original dataset authors.
+
+SUPPORT
+-------
+For questions about reproduction:
+1. Check this file first
+2. Review README.md for additional context
+3. Check code comments in train_cv.py
+
+Last Updated: 2026-01-12
+Version: 1.2
+
